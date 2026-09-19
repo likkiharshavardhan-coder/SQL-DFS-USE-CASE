@@ -3,3 +3,117 @@
 spark.sql("select * from df where category = 'Exercise'").show()
 #DFS:-
 fildf= df.filter("category = 'Exercise'").show()
+#Two Coloum Filter “AND” Function: (using df table)
+#SQL:-
+spark.sql("select id,tdate,category,spendby from df where category = 'Exercise' and spendby = 'cash'").show()
+#DFS:-
+fildf= df.filter("category = 'Exercise' and spendby ='cash'").select("id","tdate","category","spendby").show()
+#Multi Filter “IN” Function: (using df table)
+#SQL:-
+spark.sql("select * from df where category in ('Exercise', 'Gymnastics')").show()
+#DFS:-
+fildf= df.filter("category in ('Exercise','Gymnastics')")
+fildf.show()
+#Filter “LIKE” Function: (using df table)
+#SQL:-
+spark.sql("select * from df where product like  '%Gymnastics%' ").show()
+#DFS:-
+fildf= df.filter("product like '%Gymnastics%' ").show()
+#Filter “NOT EQUAL TO” Function: (using df table)
+#SQL:-
+spark.sql("select * from df where category != 'Exercise'").show()
+#DFS:- 
+fildf= df.filter("category != 'Exercise'").show()
+#Multi Filter “NOT IN” Function: (using df table)
+#SQL:-
+spark.sql("select * from df where category not in ('Exercise','Gymnastics')").show()
+#DFS:-
+fildf= df.filter("category not in ('Exercise','Gymnastics')")
+fildf.show()
+#Filter “IS” Function: (using df table)
+#SQL:-
+spark.sql("select * from df where product is null").show()
+#DFS:-
+fildf= (df.filter("product is null")).show()
+#Filter “IS NOT” Function: (using df table)
+#SQL:-
+spark.sql("select * from df where product is not null").show()
+#DFS:-
+fildf= (df.filter("product is not null")).show()
+#Aggragition “MAX” Function: (using df table)
+#SQL:-
+spark.sql("select max(id) as idmax from df ").show()
+#DFS:-
+idmax = df.agg({"id": "max"}).collect()[0][0]
+print(idmax)
+#Aggragition “MIN” Function: (using df table)
+#SQL:- 
+spark.sql("select min(id) as idmin from df ").show()
+#DFS:- 
+idmin = df.agg({"id": "min"}).collect()[0][0]
+print(idmin)
+#Aggragition “COUNT” Function: (using df table)
+#SQL:- 
+spark.sql("select count(1) as count from df ").show()
+#DFS:- 
+count = df.count()
+print(count)
+#Aggragition “CONDITIONAL STATEMENT” Function: (using df table)
+#SQL:- 
+spark.sql("select *, CASE WHEN spendby = 'cash' THEN '1' ELSE '0' END as status from df ").show()
+#DFS:- 
+status = df.withColumn("status", when(col("spendby") == 'cash', '1').otherwise('0'))
+status.show()
+#Aggragition “CONCATE STATEMENT” Function: (using df table)
+#SQL:- 
+spark.sql("select id,category,concat(id,'-',category) as conct from df ").show()
+#DFS:- 
+conct = df. df.select("id", "category", concat(col("id"), lit("-"), col("category")).alias("concat"))
+conct.show()
+#Aggragition Multi “CONCATE STATEMENT” Function: (using df table)
+#SQL:- 
+spark.sql("select id,category,product,concat_ws('-',id,category,product) as conct from df ").show()
+#DFS:- 
+conct = df.select("id", "category","product", concat_ws("-",col("id"), col("category"),col("product")).alias("concat"))
+conct.show()
+#Aggragition  “LOWER” Function: (using df table)
+#SQL:- 
+spark.sql("select category,lower(category) as lower from df ").show()
+#DFS:- 
+lower = df.select( "category", lower("category").alias("lower")).show()
+#Aggragition  “UPPER” Function: (using df table)
+#SQL:- 
+spark.sql("select category,upper(category) as upper from df ").show()
+#DFS:- 
+upper = df.select( "category", upper("category").alias("upper")).show()
+#Ceil  Operator: (using df table)
+#SQL:- 
+spark.sql("select amount,ceil(amount) as ceil from df ").show()
+#DFS:- 
+Ceil = df.select( "amount", ceil("amount").alias("ceil")).show()
+#Round  Operator: (using df table)
+#SQL:- 
+spark.sql("select amount,round(amount) as round from df ").show()
+#DFS:- 
+Round = df.select( "amount", round("amount").alias("round")).show()
+#Replace Null “COALESCE” Function: (using df table)
+#SQL:- 
+spark.sql("select product,coalesce(product,'NA') as nullrep from df ").show()
+#DFS:- 
+nullreplace = df.select("product", coalesce(col("product"), lit("NA")).alias("nullrep")).show()
+#“TRIM” Function: (using df table)
+#SQL:- 
+spark.sql("select product,trim(product) as trim from df ").show()
+#DFS:- 
+trimdf = df.select("product", trim("product").alias("trim")).show()
+#Filter “DISTINCT” Function: (using df table)
+#SQL:- 
+spark.sql("select distinct category as dis from df ").show()
+#DFS:- 
+disdf = df.select(col("category").alias("dis")).distinct().show()
+#Multi Filter “DISTINCT” Function: (using df table)
+#SQL:- 
+spark.sql("select distinct category,spendby as dis from df ").show()
+#DFS:- 
+disdf = df.select("category", "spendby").distinct()
+disdf.show()
