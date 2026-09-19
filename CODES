@@ -1,0 +1,5 @@
+#Single coloum Filter Function: (using df table)
+#SQL:-
+spark.sql("select * from df where category = 'Exercise'").show()
+#DFS:-
+fildf= df.filter("category = 'Exercise'").show()
