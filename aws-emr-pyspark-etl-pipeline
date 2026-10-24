@@ -245,6 +245,25 @@ with DAG(
 
         # Prevent duplicate submission if this task fails and is retried.
         retries=0,
+
+#########################################################################################################
+aws-emr-pyspark-etl/
+│
+├── dags/
+│   └── Final_EMR_Scheduled.py
+│
+├── jobs/
+│   ├── s3.py
+│   ├── snow.py
+│   ├── api.py
+│   └── master.py
+│
+├── scripts/
+│   └── air_variable.sh
+│
+├── .gitignore
+├── requirements.txt
+└── README.md
     )
 
     # Execute cluster creation before submitting the Spark jobs.
