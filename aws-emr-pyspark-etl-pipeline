@@ -1,0 +1,251 @@
+"""
+DAG: final_emr_scheduled_dag
+
+Purpose:
+    Create an Amazon EMR cluster and execute four Spark ETL jobs.
+
+Workflow:
+    1. Create an EMR cluster.
+    2. Execute the S3 ingestion job.
+    3. Execute the Snowflake ingestion job.
+    4. Execute the API ingestion job.
+    5. Execute the master consolidation job.
+
+Security:
+    - AWS credentials are managed through an Airflow connection.
+    - Infrastructure identifiers are configured through Airflow Variables.
+    - Sensitive infrastructure values must not be committed to GitHub.
+
+Schedule:
+    Configurable through the Airflow Variable "schedule_time".
+    Default: 13:25 UTC daily.
+"""
+
+from datetime import timedelta
+
+import pendulum
+
+from airflow import DAG
+from airflow.models import Variable
+from airflow.providers.amazon.aws.operators.emr import (
+    EmrAddStepsOperator,
+    EmrCreateJobFlowOperator,
+)
+
+
+# ---------------------------------------------------------------------
+# DAG CONFIGURATION
+# ---------------------------------------------------------------------
+
+DAG_ID = "final_emr_scheduled_dag"
+
+SCHEDULE_TIME = Variable.get(
+    "schedule_time",
+    default_var="25 13 * * *",
+)
+
+AWS_CONNECTION_ID = "aws_default"
+
+default_args = {
+    "owner": "airflow",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
+
+
+# ---------------------------------------------------------------------
+# EMR CLUSTER CONFIGURATION
+# ---------------------------------------------------------------------
+# Configure these Airflow Variables in your environment.
+# Never commit actual infrastructure identifiers or private values.
+
+JOB_FLOW_OVERRIDES = {
+    "Name": "CONFIDENTIAL",
+    "LogUri": "{{ var.value.emr_log_uri }}",
+    "ReleaseLabel": "{{ var.value.emr_release_label }}",
+    "ServiceRole": "{{ var.value.emr_service_role }}",
+
+    "Instances": {
+        "InstanceGroups": [
+            {
+                "Name": "Primary",
+                "Market": "ON_DEMAND",
+                "InstanceRole": "MASTER",
+                "InstanceType": "{{ var.value.emr_instance_type }}",
+                "InstanceCount": 1,
+                "EbsConfiguration": {
+                    "EbsBlockDeviceConfigs": [
+                        {
+                            "VolumeSpecification": {
+                                "VolumeType": "gp2",
+                                "SizeInGB": 32,
+                            },
+                            "VolumesPerInstance": 2,
+                        }
+                    ]
+                },
+            }
+        ],
+
+        "Ec2KeyName": "{{ var.value.emr_ec2_key_name }}",
+        "Ec2SubnetIds": [
+            "{{ var.value.emr_subnet_id }}"
+        ],
+
+        "EmrManagedMasterSecurityGroup": (
+            "{{ var.value.emr_master_security_group }}"
+        ),
+        "EmrManagedSlaveSecurityGroup": (
+            "{{ var.value.emr_slave_security_group }}"
+        ),
+
+        # Keep the cluster running until the Spark steps are submitted.
+        "KeepJobFlowAliveWhenNoSteps": True,
+        "TerminationProtected": False,
+
+        "AdditionalMasterSecurityGroups": [],
+        "AdditionalSlaveSecurityGroups": [],
+    },
+
+    "Applications": [
+        {"Name": "Spark"},
+    ],
+
+    "VisibleToAllUsers": True,
+
+    "JobFlowRole": "{{ var.value.emr_instance_profile }}",
+
+    "Tags": [
+        {
+            "Key": "for-use-with-amazon-emr-managed-policies",
+            "Value": "true",
+        }
+    ],
+
+    "ScaleDownBehavior": "TERMINATE_AT_TASK_COMPLETION",
+
+    "AutoTerminationPolicy": {
+        "IdleTimeout": "{{ var.value.emr_idle_timeout | int }}",
+    },
+}
+
+
+# ---------------------------------------------------------------------
+# SPARK JOB CONFIGURATION
+# ---------------------------------------------------------------------
+# Configure the Airflow Variable:
+#   s3_spark_scripts_bucket = your-approved-script-bucket
+#
+# Expected S3 structure:
+#   s3://<configured-bucket>/pyfiles/s3.py
+#   s3://<configured-bucket>/pyfiles/snow.py
+#   s3://<configured-bucket>/pyfiles/api.py
+#   s3://<configured-bucket>/pyfiles/master.py
+
+SPARK_SCRIPT_BASE_PATH = (
+    "{{ var.value.s3_spark_scripts_bucket }}/pyfiles"
+)
+
+SPARK_STEPS = [
+    {
+        "Name": "S3_Ingestion",
+        "ActionOnFailure": "CONTINUE",
+        "HadoopJarStep": {
+            "Jar": "command-runner.jar",
+            "Args": [
+                "spark-submit",
+                "--deploy-mode",
+                "client",
+                f"{SPARK_SCRIPT_BASE_PATH}/s3.py",
+            ],
+        },
+    },
+    {
+        "Name": "Snowflake_Ingestion",
+        "ActionOnFailure": "CONTINUE",
+        "HadoopJarStep": {
+            "Jar": "command-runner.jar",
+            "Args": [
+                "spark-submit",
+                "--deploy-mode",
+                "client",
+                "--packages",
+                "net.snowflake:spark-snowflake_2.13:3.2.2-spark_4.0",
+                f"{SPARK_SCRIPT_BASE_PATH}/snow.py",
+            ],
+        },
+    },
+    {
+        "Name": "API_Ingestion",
+        "ActionOnFailure": "CONTINUE",
+        "HadoopJarStep": {
+            "Jar": "command-runner.jar",
+            "Args": [
+                "spark-submit",
+                "--deploy-mode",
+                "client",
+                f"{SPARK_SCRIPT_BASE_PATH}/api.py",
+            ],
+        },
+    },
+    {
+        "Name": "Master_Consolidation",
+        "ActionOnFailure": "CONTINUE",
+        "HadoopJarStep": {
+            "Jar": "command-runner.jar",
+            "Args": [
+                "spark-submit",
+                "--deploy-mode",
+                "client",
+                f"{SPARK_SCRIPT_BASE_PATH}/master.py",
+            ],
+        },
+    },
+]
+
+
+# ---------------------------------------------------------------------
+# DAG DEFINITION
+# ---------------------------------------------------------------------
+
+with DAG(
+    dag_id=DAG_ID,
+    default_args=default_args,
+    description=(
+        "Create an Amazon EMR cluster and execute "
+        "four Spark ETL jobs for data ingestion and consolidation."
+    ),
+    start_date=pendulum.datetime(
+        2026, 10, 1, tz="UTC"
+    ),
+    schedule=SCHEDULE_TIME,
+    catchup=False,
+    tags=["aws", "emr", "pyspark", "etl"],
+    render_template_as_native_obj=True,
+) as dag:
+
+    create_emr_cluster = EmrCreateJobFlowOperator(
+        task_id="create_emr_cluster",
+        job_flow_overrides=JOB_FLOW_OVERRIDES,
+        aws_conn_id=AWS_CONNECTION_ID,
+    )
+
+    add_spark_steps = EmrAddStepsOperator(
+        task_id="submit_spark_steps",
+        job_flow_id=(
+            "{{ task_instance.xcom_pull("
+            "task_ids='create_emr_cluster', "
+            "key='return_value') }}"
+        ),
+        aws_conn_id=AWS_CONNECTION_ID,
+        steps=SPARK_STEPS,
+
+        # Prevent duplicate submission if this task fails and is retried.
+        retries=0,
+    )
+
+    # Execute cluster creation before submitting the Spark jobs.
+    create_emr_cluster >> add_spark_steps
